@@ -9,8 +9,12 @@ Disk cleanup tools for Windows, macOS, and Linux. Each tool scans common temp/ca
 | Platform | Script | Status |
 |----------|--------|--------|
 | Windows | [`windows/Cleanup.ps1`](windows/Cleanup.ps1) | Available |
-| macOS | [`macos/`](macos/README.md) | Planned |
+| macOS | [`macos/cleanup.sh`](macos/README.md) | Available |
 | Linux | [`linux/`](linux/README.md) | Planned |
+
+## macOS
+
+See [macos/README.md](macos/README.md). Same model as Windows: `macos/cleanup.sh` is a dry run by default, `--execute` deletes, and `--categories` / `--exclude` / `--list` filter.
 
 ## windows/Cleanup.ps1
 

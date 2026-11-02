@@ -10,7 +10,8 @@ Disk cleanup tools for Windows, macOS, and Linux, one script per platform. Every
 disk-cleanup/
   windows/
     Cleanup.ps1    # Windows tool (PowerShell)
-  macos/           # planned (POSIX shell)
+  macos/
+    cleanup.sh     # macOS tool (bash 3.2)
   linux/           # planned (POSIX shell)
   README.md
   CLAUDE.md
@@ -49,3 +50,29 @@ Test destructive paths (`-Execute`) with a narrow `-Categories` on a low-risk ta
    Optional: `-Detail` (per-item breakdown), `-Skip` (returns a reason string when the target is unavailable), `-Admin`.
 2. Use the helpers: `Get-FolderSize` / `Clear-FolderContents` for folder contents, `Remove-Folders` for whole dirs.
 3. Update the README.md category table.
+
+## macOS constraints
+
+- **Bash 3.2 compatible** (stock `/bin/bash`): no associative arrays, no `${var,,}`, no `mapfile`/`readarray`, no `&>>`. Don't rely on `set -u` with empty arrays.
+- No `set -e`: clean steps swallow errors (`2>/dev/null`) so permission-denied files never abort the run.
+- Steps run in `$(...)` subshells, so per-target state shared across steps (e.g. the Rust dir list) goes in a file under `$WORK`, not a variable.
+- Report the free space of `/System/Volumes/Data`, not `/`. On APFS, `/` is the sealed system snapshot and shows the wrong numbers.
+
+## Testing (macOS)
+
+```bash
+# Dry-run (safe, no deletions)
+macos/cleanup.sh
+
+# Specific categories
+macos/cleanup.sh --categories rust,pip
+```
+
+Test `--execute` the same way: use a narrow `--categories` on a throwaway dir, e.g. `rust` with `--scan-roots <tmpdir>`, or `huggingface` with `HF_HOME=<tmpdir>`. Don't do a full run.
+
+## Adding a macOS category
+
+1. Add an `add_target <name> <group> <description> [path...]` call in the matching group section of `macos/cleanup.sh`. With paths, the target measures and clears the contents of those folders; nothing else is needed.
+2. For anything else, define functions named after the target: `measure_<name>` (echo KB), `clean_<name>`, and optionally `detail_<name>` / `skip_<name>` (echo a reason when unavailable). Names must be valid function-name suffixes (lowercase, no dashes).
+3. Use the helpers: `paths_kb` / `clear_contents` for folder contents, `remove_dirs` for whole dirs.
+4. Update the category table in macos/README.md.
