@@ -1,12 +1,16 @@
-# win-cleanup
+# disk-cleanup
 
-Disk cleanup tools for Windows. Scans common temp/cache/build locations, reports estimated reclaimable space, and optionally deletes files.
+Disk cleanup tools for Windows, macOS, and Linux. Each tool scans common temp/cache/build locations, reports estimated reclaimable space, and optionally deletes files.
+
+**Dry run is the default -- nothing is deleted unless you ask for it.**
 
 ## Tools
 
-| Script | Platform | Description |
-|--------|----------|-------------|
-| `windows/Cleanup.ps1` | Windows 11 | PowerShell cleanup tool |
+| Platform | Script | Status |
+|----------|--------|--------|
+| Windows | [`windows/Cleanup.ps1`](windows/Cleanup.ps1) | Available |
+| macOS | [`macos/`](macos/README.md) | Planned |
+| Linux | [`linux/`](linux/README.md) | Planned |
 
 ## windows/Cleanup.ps1
 
@@ -14,7 +18,7 @@ Disk cleanup tools for Windows. Scans common temp/cache/build locations, reports
 
 - PowerShell 5.1+
 - Run as your normal user (no admin required for user-space targets)
-- For Windows system targets (C:\Windows\Temp, SoftwareDistribution), run as Administrator
+- For `[admin]` targets (`wintemp`, `wupdate`, `delivery`), run as Administrator
 
 ### Usage
 
@@ -25,42 +29,71 @@ Disk cleanup tools for Windows. Scans common temp/cache/build locations, reports
 # Actually delete
 .\windows\Cleanup.ps1 -Execute
 
+# List available categories
+.\windows\Cleanup.ps1 -List
+
 # Only specific categories
 .\windows\Cleanup.ps1 -Categories rust,pip,docker
 .\windows\Cleanup.ps1 -Categories rust,pip -Execute
+
+# Everything except a few
+.\windows\Cleanup.ps1 -Exclude recycle,huggingface -Execute
+```
+
+If you get an execution-policy error:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File windows\Cleanup.ps1
 ```
 
 ### Categories
 
 | Name | Target |
 |------|--------|
-| `temp` | `%TEMP%` (user temp files) |
-| `wintemp` | `C:\Windows\Temp` |
-| `wupdate` | `C:\Windows\SoftwareDistribution\Download` |
-| `rust` | `target/` dirs under DocumentsRoot |
+| **System** | |
+| `temp` | `%TEMP%`, `%LOCALAPPDATA%\Temp` |
+| `wintemp` | `C:\Windows\Temp` (admin) |
+| `wupdate` | `C:\Windows\SoftwareDistribution\Download` (admin; stops/restarts `wuauserv`) |
+| `delivery` | `C:\Windows\SoftwareDistribution\DeliveryOptimization` (admin) |
+| `thumbnails` | Explorer `thumbcache_*.db` / `iconcache_*.db` |
+| `crashdumps` | `%LOCALAPPDATA%\CrashDumps`, Windows Error Reporting |
+| `recycle` | Recycle Bin (all drives) |
+| **Browsers** | |
+| `chrome` | Chrome `Cache`, `Code Cache`, `GPUCache` (all profiles) |
+| `edge` | Edge `Cache`, `Code Cache`, `GPUCache` (all profiles) |
+| `firefox` | Firefox `cache2` (all profiles) |
+| **Package caches** | |
+| `npm` | `%LOCALAPPDATA%\npm-cache`, `%APPDATA%\npm-cache`, `~\.npm\_cacache` |
 | `pip` | `%LOCALAPPDATA%\pip\Cache` |
-| `go` | `%USERPROFILE%\go\pkg\mod` (via `go clean -modcache`) |
-| `gradle` | `%USERPROFILE%\.gradle\caches` |
-| `npm` | `%LOCALAPPDATA%\npm-cache`, `%APPDATA%\npm-cache` |
-| `cargo` | `%USERPROFILE%\.cargo\registry` |
-| `chrome` | Chrome browser cache |
-| `edge` | Edge browser cache |
-| `docker` | Docker images/containers (via `docker system prune -af --volumes`) |
+| `uv` | `%LOCALAPPDATA%\uv\cache` |
+| `cargo` | `~\.cargo\registry\cache` and `src` (index is kept) |
+| `go` | Go module cache (via `go clean -modcache` if Go is on PATH) |
+| `gradle` | `~\.gradle\caches` |
+| `nuget` | `~\.nuget\packages` |
+| `huggingface` | `~\.cache\huggingface\hub` (lists each model with size / last use) |
+| **Build artifacts** | |
+| `rust` | `target\` dirs next to a `Cargo.toml` under `-DocumentsRoot` |
+| **Apps** | |
 | `vscode` | VS Code cache dirs |
-| `thumbnails` | Windows thumbnail cache |
-| `recycle` | Recycle Bin |
+| **Docker** | |
+| `docker` | `docker system prune -af` (images, containers, networks, build cache) |
 
 ### Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `-Execute` | (off) | Actually delete files; dry-run if omitted |
+| `-Execute` (alias `-Run`) | (off) | Actually delete files; dry-run if omitted |
 | `-Categories` | `all` | Comma-separated list of categories |
+| `-Exclude` | (none) | Comma-separated list of categories to skip |
+| `-List` | (off) | Print categories and exit |
 | `-DocumentsRoot` | `$env:USERPROFILE\Documents` | Root to scan for build artifacts |
 
 ### Notes
 
-- **Docker**: daemon must be running for pruning. Reports data dir size otherwise.
-- **Go cache**: uses `go clean -modcache` to safely clear (Go must be on PATH).
-- **Thumbnails**: Windows Explorer needs a restart after deleting thumbcache files.
-- **Cargo registry**: only deletes downloaded source; Rust itself remains usable.
+- With `-Execute`, each target is re-measured after cleaning, so "freed" is what actually went away. Files that were in use or access-denied are reported as left over.
+- **Docker**: daemon must be running; otherwise the category is skipped. Volumes are **not** pruned, since they may hold database or app state.
+- **Rust**: only `target\` dirs whose parent has a `Cargo.toml` are removed, so Maven and other `target` folders are left alone.
+- **Thumbnails**: restart Explorer after deleting thumbcache files.
+- **Browsers**: close them first to avoid locked files.
+- Package caches re-download on next use, so the first build afterward is slower.
+- Nothing touches documents, Downloads, or installed programs.
